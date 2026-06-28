@@ -9,6 +9,8 @@
 <meta name="apple-mobile-web-app-title" content="施工管理 学習">
 <link rel="manifest" href="manifest.json">
 <title>一級施工管理技士 学習</title>
+<!-- v2: OCR (Tesseract.js) added -->
+
 <style>
 :root{
   --bg:#0d1117; --panel:#161b22; --panel2:#1c232c; --line:#30363d;
@@ -103,6 +105,30 @@ button{font-family:inherit; cursor:pointer}
 .toast.show{opacity:.95}
 .divider{height:1px; background:var(--line); margin:14px 0}
 hr{border:none; border-top:1px solid var(--line)}
+.note{font-size:12px; color:var(--sub); background:var(--panel2); border:1px solid var(--line); border-radius:10px; padding:9px 11px; margin-top:8px; line-height:1.5}
+.note b{color:var(--txt)}
+.ovl{position:fixed; inset:0; background:rgba(0,0,0,.62); display:none; align-items:center; justify-content:center; z-index:200; padding:24px}
+.ovl.show{display:flex}
+.ovl .box{background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:22px 20px; max-width:320px; width:100%; text-align:center}
+.spin{width:34px; height:34px; border:3px solid var(--line); border-top-color:var(--accent2); border-radius:50%; margin:0 auto 12px; animation:rot 1s linear infinite}
+@keyframes rot{to{transform:rotate(360deg)}}
+.ovl .st{font-size:14px; color:var(--txt)}
+.ovl .sub{font-size:12px; color:var(--sub); margin-top:4px}
+.ovl .pbar{height:6px; background:var(--panel2); border-radius:99px; overflow:hidden; margin-top:14px}
+.ovl .pbar i{display:block; height:100%; width:0; background:var(--accent2); transition:width .25s}
+.seg{display:flex; gap:8px; margin-bottom:14px}
+.seg button{flex:1; background:var(--panel2); border:1px solid var(--line); color:var(--sub); border-radius:10px; padding:11px 8px; font-size:14px; font-weight:600}
+.seg button.active{background:var(--accent); color:#fff; border-color:var(--accent)}
+details.help{margin-top:8px} details.help summary{cursor:pointer; font-size:13px; color:var(--accent2)}
+.pv{background:var(--panel2); border:1px solid var(--line); border-radius:10px; padding:11px 12px; margin-bottom:8px}
+.pv.err{border-color:var(--ng)}
+.pv .h{display:flex; gap:8px; align-items:center; font-size:13px; margin-bottom:4px}
+.pv .ok{color:var(--ok); font-weight:700} .pv .bad{color:var(--ng); font-weight:700} .pv .wn{color:var(--warn)}
+.pv .qt{font-size:13px; color:var(--txt); white-space:pre-wrap}
+.pv .ch{font-size:12px; color:var(--sub); margin-top:3px}
+.pv .ch.bad{color:var(--ng)} .pv .ch.wn{color:var(--warn)}
+.flag{display:inline-block; font-size:11px; padding:1px 8px; border-radius:99px; border:1px solid var(--warn); color:var(--warn); margin:2px 4px 2px 0}
+.rd{color:#ff5d5d; font-weight:700}
 </style>
 </head>
 <body>
@@ -142,6 +168,11 @@ hr{border:none; border-top:1px solid var(--line)}
 
   <!-- 追加 -->
   <section id="v-add" class="view">
+    <div class="seg">
+      <button id="segManual" class="active" type="button" onclick="setAddMode('manual')">✍️ 手入力</button>
+      <button id="segBulk" type="button" onclick="setAddMode('bulk')">📋 一括取り込み</button>
+    </div>
+    <div id="addManual">
     <div class="card">
       <h2 id="addTitle">問題を追加</h2>
       <label>分野・カテゴリ</label>
@@ -153,6 +184,14 @@ hr{border:none; border-top:1px solid var(--line)}
       <label>問題画像（複数可・自動圧縮）</label>
       <input type="file" id="f-qimg" accept="image/*" multiple>
       <div class="thumbs" id="th-q"></div>
+      <div class="row" style="margin-top:8px">
+        <button class="btn sec sm" type="button" onclick="runOCR('q')">🔎 画像から問題文・選択肢を読み取る</button>
+        <select id="ocrDir" style="flex:0 0 110px">
+          <option value="jpn">横書き</option>
+          <option value="jpn_vert">縦書き</option>
+        </select>
+      </div>
+      <div class="note">📷 <b>（実験的）</b>端末内OCR。精度が不安定なため、別アプリでテキスト化して「<b>追加→一括取り込み</b>」を使うのがおすすめです。初回は日本語データ取得に通信が必要（数十MB）。</div>
 
       <label>選択肢</label>
       <div id="choices"></div>
@@ -166,6 +205,7 @@ hr{border:none; border-top:1px solid var(--line)}
       <label>解説画像（複数可・自動圧縮）</label>
       <input type="file" id="f-eimg" accept="image/*" multiple>
       <div class="thumbs" id="th-e"></div>
+      <button class="btn sec sm" type="button" style="margin-top:8px" onclick="runOCR('e')">🔎 画像から解説を読み取る</button>
 
       <label>タグ（カンマ区切り）</label>
       <input id="f-tags" placeholder="例：換気, 必要換気量">
@@ -175,6 +215,34 @@ hr{border:none; border-top:1px solid var(--line)}
       <div class="divider"></div>
       <button class="btn" onclick="saveQuestion()">保存する</button>
       <button class="btn ghost" style="margin-top:8px" id="cancelEdit" onclick="resetForm();go('list')" hidden>編集をやめる</button>
+    </div>
+    </div><!-- /addManual -->
+
+    <div id="addBulk" hidden>
+      <div class="card">
+        <h2>一括テキスト取り込み</h2>
+        <p class="muted">別アプリ（AI等）で写真をテキスト化し、確認のうえ下の書式で貼り付けると、複数問題をまとめて登録できます。図・グラフが本体の問題は「画像: あり」を付け、取り込み後に一覧から写真を後付けできます。</p>
+        <details class="help">
+          <summary>📑 書式の説明とサンプルを見る</summary>
+          <div class="muted" style="margin-top:8px;line-height:1.7">
+            ・1問ごとに <b>===</b> の行で区切る<br>
+            ・行頭ラベル：<b>分野: / タグ: / 問題: / 選択肢: / 正解: / 解説: / 画像: / 解説画像:</b><br>
+            ・問題・解説は複数行OK（次のラベルか === までを本文として扱う）<br>
+            ・選択肢は <b>1.</b> / <b>1)</b> / <b>①</b> など可。数は自由（2つ以上推奨）<br>
+            ・正解は番号（例 <b>3</b>、複数正解は <b>2,4</b>）。<b>空でも取り込み可</b>（後で一覧から設定）<br>
+            ・タグ・解説は任意。コロンは全角／半角どちらでもOK、前後の空白も寛容<br>
+            ・図が問題本体の場合は「<b>画像: あり</b>」、解説が画像なら「<b>解説画像: あり</b>」→取り込み後に一覧から写真を添付
+          </div>
+        </details>
+        <button class="btn sec sm" type="button" style="margin-top:10px" onclick="insertBulkSample()">サンプルを挿入</button>
+        <label>取り込みテキスト</label>
+        <textarea id="bulkText" style="min-height:210px" placeholder="=== で区切って貼り付け（上の「サンプルを挿入」で例を確認できます）"></textarea>
+        <div class="row" style="margin-top:10px">
+          <button class="btn sec" type="button" onclick="previewBulk()">プレビュー</button>
+          <button class="btn" type="button" id="bulkImportBtn" onclick="commitBulk()" disabled>取り込む</button>
+        </div>
+        <div id="bulkPreview"></div>
+      </div>
     </div>
   </section>
 
@@ -233,6 +301,12 @@ hr{border:none; border-top:1px solid var(--line)}
   <button data-go="data"><span class="ic">🔄</span>データ</button>
 </nav>
 <div class="toast" id="toast"></div>
+<div class="ovl" id="ocrOvl"><div class="box">
+  <div class="spin"></div>
+  <div class="st" id="ocrSt">読み取り中…</div>
+  <div class="sub" id="ocrSub">初回は日本語データを取得します</div>
+  <div class="pbar"><i id="ocrBar"></i></div>
+</div></div>
 
 <script>
 /* ============ ストレージ（IndexedDB＋メモリ自動フォールバック） ============ */
@@ -286,6 +360,8 @@ let quiz={list:[],idx:0,mode:'',answered:false,startedAt:0};
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 const $=s=>document.querySelector(s);
 const esc=s=>(s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+// 解説の[r]…[/r]を赤字に変換（誤りの箇所を強調）
+const renderExpl=t=>esc(t).replace(/\[r\]/g,'<span class="rd">').replace(/\[\/r\]/g,'</span>');
 function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),1800);}
 
 /* ============ 画像圧縮 ============ */
@@ -357,18 +433,21 @@ async function saveQuestion(){
   const answer=parseInt(picked.value,10);
   if(answer>=choices.length){toast('正解は有効な選択肢を選んでください');return;}
   const tags=$('#f-tags').value.split(',').map(t=>t.trim()).filter(Boolean);
+  const prev=editingId?QUESTIONS.find(x=>x.id===editingId):null;
   const q={
     id:editingId||uid(),
     category:cat||'未分類',
     questionText:qtext,
     questionImages:[...formImgQ],
-    choices, answer,
+    choices, answer, answers:[answer],
     explanation:$('#f-expl').value.trim(),
     explanationImages:[...formImgE],
     tags,
     groupId:$('#f-group').value.trim(),
-    createdAt:editingId?(QUESTIONS.find(x=>x.id===editingId)?.createdAt||Date.now()):Date.now(),
-    srs:editingId?(QUESTIONS.find(x=>x.id===editingId)?.srs||newSRS()):newSRS()
+    needImage:(prev?prev.needImage:false)&&formImgQ.length===0,
+    needExplImage:(prev?prev.needExplImage:false)&&formImgE.length===0,
+    createdAt:prev?(prev.createdAt||Date.now()):Date.now(),
+    srs:prev?(prev.srs||newSRS()):newSRS()
   };
   await put('questions',q);
   await reload();
@@ -388,12 +467,21 @@ function editQuestion(id){
   $('#choices').innerHTML='';q.choices.forEach(c=>addChoice(c));
   const picks=$('#choices').querySelectorAll('.pick');if(picks[q.answer])picks[q.answer].checked=true;
   $('#addTitle').textContent='問題を編集';$('#cancelEdit').hidden=false;
+  setAddMode('manual');
   go('add');
 }
 async function deleteQuestion(id){
   if(!confirm('この問題を削除しますか？（解答履歴は残ります）'))return;
   await del('questions',id);await reload();renderList();toast('削除しました');
 }
+
+/* 正解集合（単一/複数正解・未設定に対応） */
+function correctSet(q){
+  if(Array.isArray(q.answers)&&q.answers.length)return q.answers;
+  if(typeof q.answer==='number'&&q.answer>=0)return [q.answer];
+  return [];
+}
+function hasAnswer(q){return correctSet(q).length>0;}
 
 /* ============ SRS 計算（簡易 Leitner） ============ */
 function statsForQuestion(id){
@@ -424,7 +512,7 @@ document.querySelectorAll('.mode').forEach(b=>b.onclick=()=>startQuiz(b.dataset.
 /* ============ 出題 ============ */
 function buildQuizList(mode){
   const cat=$('#filterCat').value;
-  let pool=QUESTIONS.filter(q=>!cat||q.category===cat);
+  let pool=QUESTIONS.filter(q=>(!cat||q.category===cat)&&hasAnswer(q));
   if(!pool.length)return[];
   if(mode==='random'){return shuffle(pool);}
   if(mode==='old'){
@@ -473,12 +561,13 @@ function answer(i){
   if(quiz.answered)return;
   quiz.answered=true;
   const q=quiz.list[quiz.idx];
-  const correct=i===q.answer;
+  const cs=correctSet(q);
+  const correct=cs.includes(i);
   const timeMs=Date.now()-quiz.startedAt;
   // 表示
   [...document.querySelectorAll('#opts .opt')].forEach(btn=>{
     const bi=+btn.dataset.i;
-    if(bi===q.answer)btn.classList.add('correct'),btn.querySelector('span').insertAdjacentHTML('afterend','<span class="mk">✓</span>');
+    if(cs.includes(bi))btn.classList.add('correct'),btn.querySelector('span').insertAdjacentHTML('afterend','<span class="mk">✓</span>');
     if(bi===i&&!correct)btn.classList.add('wrong'),btn.querySelector('span').insertAdjacentHTML('afterend','<span class="mk">✕</span>');
   });
   // 記録
@@ -487,7 +576,7 @@ function answer(i){
   applySRS(q,correct);put('questions',q);
   // フィードバック
   let fb=`<div class="expl"><b>${correct?'⭕ 正解':'❌ 不正解'}</b>`;
-  if(q.explanation)fb+='\n'+esc(q.explanation);
+  if(q.explanation)fb+='\n'+renderExpl(q.explanation);
   fb+='</div>';
   (q.explanationImages||[]).forEach(s=>fb+=`<img class="q-img" src="${s}">`);
   const last=quiz.idx>=quiz.list.length-1;
@@ -509,12 +598,19 @@ function renderList(){
   $('#listBody').innerHTML=list.map(q=>{
     const s=statsForQuestion(q.id);
     const acc=s.acc===null?'未解答':Math.round(s.acc*100)+'%';
+    const flags=[];
+    if(!hasAnswer(q))flags.push('⚠️ 要・正解設定');
+    if(q.needImage&&!(q.questionImages||[]).length)flags.push('📷 要・問題図');
+    if(q.needExplImage&&!(q.explanationImages||[]).length)flags.push('📷 要・解説図');
+    const flagHtml=flags.length?`<div style="margin-top:5px">${flags.map(f=>`<span class="flag">${f}</span>`).join('')}</div>`:'';
+    const qt=q.questionText||'(問題図を添付してください)';
     return `<div class="list-item">
       <div class="cat">${esc(q.category)} ・ 正答率 ${acc}（${s.total}回）</div>
-      <div class="qt">${esc(q.questionText)}</div>
+      <div class="qt">${esc(qt)}</div>
+      ${flagHtml}
       <div>${q.tags.map(t=>`<span class="tag">${esc(t)}</span>`).join('')}</div>
       <div class="row" style="margin-top:8px">
-        <button class="btn sec sm" onclick="editQuestion('${q.id}')">編集</button>
+        <button class="btn sec sm" onclick="editQuestion('${q.id}')">編集・写真添付</button>
         <button class="btn ghost sm" onclick="deleteQuestion('${q.id}')">削除</button>
       </div>
     </div>`;
@@ -664,6 +760,245 @@ async function loadSamples(){
   let n=0;
   for(const q of sampleData()){if(sig.has(q.questionText))continue;await put('questions',q);n++;}
   await reload();toast(n?`サンプル ${n}問を追加`:'サンプルは既にあります');go('list');
+}
+
+/* ============ OCR（Tesseract.js・日本語・端末内実行） ============ */
+const TJS_SRC='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+let _tjs=null;
+function ensureTesseract(){
+  if(_tjs)return _tjs;
+  _tjs=new Promise((res,rej)=>{
+    if(window.Tesseract)return res(window.Tesseract);
+    const s=document.createElement('script');
+    s.src=TJS_SRC; s.async=true;
+    s.onload=()=>window.Tesseract?res(window.Tesseract):rej(new Error('読み込み失敗'));
+    s.onerror=()=>rej(new Error('OCRライブラリを取得できません（通信環境を確認してください）'));
+    document.head.appendChild(s);
+  });
+  return _tjs;
+}
+// 前処理：拡大＋グレースケール＋簡易コントラスト強調
+function preprocessForOCR(dataURL){
+  return new Promise(res=>{
+    const img=new Image();
+    img.onload=()=>{
+      const minW=1000;
+      let scale=img.width<minW?Math.min(2,minW/img.width):1;
+      const w=Math.round(img.width*scale), h=Math.round(img.height*scale);
+      const c=document.createElement('canvas');c.width=w;c.height=h;
+      const ctx=c.getContext('2d');ctx.drawImage(img,0,0,w,h);
+      const im=ctx.getImageData(0,0,w,h),d=im.data;
+      for(let i=0;i<d.length;i+=4){
+        let g=0.299*d[i]+0.587*d[i+1]+0.114*d[i+2];
+        g=(g-128)*1.35+128;                 // コントラスト
+        g=g<0?0:g>255?255:g;
+        d[i]=d[i+1]=d[i+2]=g;
+      }
+      ctx.putImageData(im,0,0);
+      res(c.toDataURL('image/jpeg',0.92));
+    };
+    img.onerror=()=>res(dataURL);
+    img.src=dataURL;
+  });
+}
+const OCR_STATUS={'loading tesseract core':'エンジン準備中','initializing tesseract':'エンジン準備中','loading language traineddata':'日本語データ取得中','loading language traineddata (from cache)':'日本語データ読込中','initializing api':'初期化中','recognizing text':'文字を認識中'};
+function showOcr(on){$('#ocrOvl').classList.toggle('show',!!on);}
+function setOcr(status,prog){
+  $('#ocrSt').textContent=OCR_STATUS[status]||'読み取り中…';
+  $('#ocrBar').style.width=Math.round((prog||0)*100)+'%';
+}
+// OCRテキストから問題文と選択肢を推定
+function parseQuestion(text){
+  const lines=text.split(/\r?\n/).map(s=>s.replace(/\s+$/,'').replace(/^\s+/,'')).filter(s=>s.length);
+  const marker=/^\s*([①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮]|[(（]?\s*[0-9０-９]{1,2}\s*[\.．\)）]|[1-5１-５]\s*[、.])\s*/;
+  let firstIdx=-1;
+  for(let i=0;i<lines.length;i++){if(marker.test(lines[i])){firstIdx=i;break;}}
+  if(firstIdx<1)return{question:lines.join('\n'),choices:[]};
+  const question=lines.slice(0,firstIdx).join('\n');
+  const choices=[]; let cur=null;
+  for(let i=firstIdx;i<lines.length;i++){
+    if(marker.test(lines[i])){if(cur!==null)choices.push(cur);cur=lines[i].replace(marker,'');}
+    else if(cur!==null){cur+=lines[i];}
+  }
+  if(cur!==null)choices.push(cur);
+  return{question,choices:choices.filter(c=>c.trim()).slice(0,6)};
+}
+let _ocrBusy=false;
+async function runOCR(which){
+  if(_ocrBusy)return;
+  const imgs=which==='q'?formImgQ:formImgE;
+  if(!imgs.length){toast(which==='q'?'先に問題画像を追加してください':'先に解説画像を追加してください');return;}
+  _ocrBusy=true; showOcr(true); setOcr('initializing tesseract',0);
+  let worker;
+  try{
+    const T=await ensureTesseract();
+    const lang=$('#ocrDir').value||'jpn';
+    worker=await T.createWorker(lang,1,{
+      langPath:'https://tessdata.projectnaptha.com/4.0.0',
+      logger:m=>{if(m&&typeof m.progress==='number')setOcr(m.status,m.progress);}
+    });
+    let all='';
+    for(let i=0;i<imgs.length;i++){
+      $('#ocrSub').textContent=`画像 ${i+1}/${imgs.length}`;
+      const pre=await preprocessForOCR(imgs[i]);
+      const {data:{text}}=await worker.recognize(pre);
+      all+=(all?'\n':'')+text;
+    }
+    all=all.replace(/[ \t]+\n/g,'\n').replace(/\n{3,}/g,'\n\n').trim();
+    if(!all){toast('文字を読み取れませんでした');return;}
+    if(which==='q'){
+      const {question,choices}=parseQuestion(all);
+      $('#f-q').value=question||all;
+      if(choices.length>=2){
+        $('#choices').innerHTML=''; choices.forEach(c=>addChoice(c));
+      }
+      toast('自動入力しました。内容を確認・修正してください');
+    }else{
+      $('#f-expl').value=$('#f-expl').value?($('#f-expl').value+'\n'+all):all;
+      toast('解説を自動入力しました。確認・修正してください');
+    }
+  }catch(e){
+    toast('OCR失敗：'+(e.message||e));
+  }finally{
+    try{if(worker)await worker.terminate();}catch(_){}
+    showOcr(false); $('#ocrSub').textContent='初回は日本語データを取得します'; _ocrBusy=false;
+  }
+}
+
+/* ============ 一括テキスト取り込み ============ */
+function setAddMode(m){
+  const bulk=m==='bulk';
+  $('#addManual').hidden=bulk; $('#addBulk').hidden=!bulk;
+  $('#segManual').classList.toggle('active',!bulk);
+  $('#segBulk').classList.toggle('active',bulk);
+}
+const BULK_SAMPLE=`===
+分野: 建築 環境工学
+タグ: 採光, 照明
+問題: 採光・照明に関する記述として、最も不適当なものはどれか。
+選択肢:
+1. 昼光率は、室内の明るさを昼光によって評価する指標である。
+2. 照度は、単位面積当たりに入射する光束で、単位はlx（ルクス）である。
+3. 演色性は、光源が物体の色をどの程度忠実に見せるかを表す。
+4. 設計用全天空照度は、快晴の青空のときが最も大きい。
+正解: 4
+解説: 設計用全天空照度は、薄曇りのときが最も大きく、快晴時はむしろ小さい。
+
+===
+分野: 施工管理法（工程管理）
+問題: 下図のネットワーク工程表に関する次の設問に答えよ。図を参照すること。
+画像: あり
+選択肢:
+1. ア
+2. イ
+3. ウ
+4. エ
+正解:
+解説画像: あり
+===`;
+function insertBulkSample(){$('#bulkText').value=BULK_SAMPLE;previewBulk();}
+
+function toHalf(s){return s.replace(/[０-９]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0));}
+const CHOICE_RE=/^[\s　]*([①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳]|[(（]?[\s　]*[0-9０-９]{1,2}[\s　]*[\.．、)）])[\s　]*/;
+function stripChoiceMarker(s){return s.replace(CHOICE_RE,'').trim();}
+function matchBulkLabel(line){
+  const m=line.match(/^[\s　]*(分野|タグ|問題|選択肢|正解|解説画像|解説|画像)[\s　]*[:：][\s　]*([\s\S]*)$/);
+  return m?{label:m[1],rest:m[2]}:null;
+}
+const YESRE=/^(あり|有|はい|yes|true|1|○|◯|要)$/i;
+function parseBulkBlock(block){
+  const o={category:'',tags:[],question:'',choices:[],answers:[],answerRaw:'',explanation:'',needImage:false,needExplImage:false};
+  const errs=[],warns=[];
+  let field=null;
+  for(const raw of block.split(/\r?\n/)){
+    const line=raw.replace(/\s+$/,'');
+    const lab=matchBulkLabel(line);
+    if(lab){
+      const v=lab.rest.trim();
+      if(lab.label==='分野'){o.category=v;field=null;}
+      else if(lab.label==='タグ'){o.tags=v.split(/[,、，]/).map(t=>t.trim()).filter(Boolean);field=null;}
+      else if(lab.label==='問題'){o.question=v;field='q';}
+      else if(lab.label==='解説'){o.explanation=v;field='e';}
+      else if(lab.label==='選択肢'){field='c';if(v)o.choices.push(stripChoiceMarker(v));}
+      else if(lab.label==='正解'){o.answerRaw=v;field=null;}
+      else if(lab.label==='画像'){o.needImage=YESRE.test(v);field=null;}
+      else if(lab.label==='解説画像'){o.needExplImage=YESRE.test(v);field=null;}
+    }else{
+      const t=line.trim();
+      if(!t){if(field==='q'&&o.question)o.question+='\n';else if(field==='e'&&o.explanation)o.explanation+='\n';continue;}
+      if(field==='q')o.question+=(o.question?'\n':'')+t;
+      else if(field==='e')o.explanation+=(o.explanation?'\n':'')+t;
+      else if(field==='c')o.choices.push(stripChoiceMarker(t));
+      else warns.push('対応ラベルのない行を無視：「'+t+'」');
+    }
+  }
+  if(o.answerRaw){
+    for(const p of toHalf(o.answerRaw).split(/[,、，\s　]+/).map(x=>x.trim()).filter(Boolean)){
+      const n=parseInt(p,10);
+      if(isNaN(n)){errs.push('正解の指定が数字ではありません：「'+p+'」');continue;}
+      if(n<1||n>o.choices.length){errs.push('正解番号 '+n+' が選択肢('+o.choices.length+'個)の範囲外');continue;}
+      o.answers.push(n-1);
+    }
+    o.answers=[...new Set(o.answers)].sort((a,b)=>a-b);
+  }
+  if(!o.question&&!o.needImage)errs.push('問題文がありません');
+  if(o.choices.length<2)warns.push('選択肢が2つ未満です（取り込み後に編集で追加できます）');
+  if(!o.answers.length)warns.push('正解が未設定です（取り込み後に一覧から設定できます）');
+  o.category=o.category||'未分類';
+  return {o,errs,warns};
+}
+function parseBulk(text){
+  return text.split(/^[\s　]*={3,}[\s　]*$/m).map(b=>b.trim()).filter(b=>b.length).map(parseBulkBlock);
+}
+let _bulkParsed=[];
+function previewBulk(){
+  _bulkParsed=parseBulk($('#bulkText').value||'');
+  const okCount=_bulkParsed.filter(r=>r.errs.length===0).length;
+  const errCount=_bulkParsed.length-okCount;
+  let html=`<div class="muted" style="margin:12px 0 8px">認識 ${_bulkParsed.length}問 ／ 取り込み可 ${okCount}問${errCount?` ／ エラー ${errCount}問`:''}</div>`;
+  if(!_bulkParsed.length)html+='<div class="muted">テキストがありません。=== で区切って貼り付けてください。</div>';
+  _bulkParsed.forEach((r,i)=>{
+    const o=r.o,bad=r.errs.length>0;
+    const flags=[];
+    if(o.needImage)flags.push('要・問題図');
+    if(o.needExplImage)flags.push('要・解説図');
+    if(!o.answers.length)flags.push('要・正解設定');
+    html+=`<div class="pv ${bad?'err':''}">
+      <div class="h"><span class="${bad?'bad':'ok'}">${bad?'✕':'✓'}</span><b>第${i+1}問</b><span class="muted">${esc(o.category)}</span></div>
+      <div class="qt">${esc(o.question||'(問題文なし・画像問題)')}</div>
+      <div class="ch">選択肢 ${o.choices.length}個：${o.choices.map((c,ci)=>(o.answers.includes(ci)?'【正解】':'')+esc(c)).join(' ／ ')||'なし'}</div>
+      ${o.explanation?`<div class="ch">解説あり</div>`:''}
+      ${flags.length?`<div style="margin-top:5px">${flags.map(f=>`<span class="flag">${f}</span>`).join('')}</div>`:''}
+      ${r.errs.map(e=>`<div class="ch bad">⚠ ${esc(e)}</div>`).join('')}
+      ${r.warns.map(e=>`<div class="ch wn">・${esc(e)}</div>`).join('')}
+    </div>`;
+  });
+  $('#bulkPreview').innerHTML=html;
+  $('#bulkImportBtn').disabled=okCount===0;
+  $('#bulkImportBtn').textContent=okCount?`${okCount}問を取り込む`:'取り込む';
+}
+async function commitBulk(){
+  if(!_bulkParsed.length)previewBulk();
+  const ok=_bulkParsed.filter(r=>r.errs.length===0);
+  if(!ok.length){toast('取り込める問題がありません');return;}
+  let n=0;
+  for(const r of ok){
+    const o=r.o;
+    await put('questions',{
+      id:uid(), category:o.category, questionText:o.question,
+      questionImages:[], choices:o.choices,
+      answer:o.answers.length?o.answers[0]:-1, answers:o.answers,
+      explanation:o.explanation, explanationImages:[], tags:o.tags, groupId:'',
+      needImage:o.needImage, needExplImage:o.needExplImage,
+      createdAt:Date.now()+n, srs:newSRS()
+    });
+    n++;
+  }
+  await reload();
+  $('#bulkText').value='';$('#bulkPreview').innerHTML='';_bulkParsed=[];
+  $('#bulkImportBtn').disabled=true;$('#bulkImportBtn').textContent='取り込む';
+  toast(`${n}問を取り込みました`);
+  go('list');
 }
 
 /* ============ 起動 ============ */
