@@ -692,7 +692,7 @@ async function mergeData(data){
 // GitHub（同じ場所）に置いた questions.json を取得してマージ
 async function importFromSeed(silent){
   try{
-    const res=await fetch('./questions.json',{cache:'no-store'});
+    const res=await fetch('./questions.json?ts='+Date.now(),{cache:'no-store'});
     if(!res.ok)throw new Error('not found');
     const {addQ,addH}=await mergeData(await res.json());
     if(!silent){$('#importMsg').textContent=`✅ 配信中の問題データから 問題 ${addQ}件 / 履歴 ${addH}件 を追加しました（重複は除外）。`;toast('最新の問題を取り込みました');}

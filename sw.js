@@ -1,5 +1,5 @@
 /* オフライン用 Service Worker（OCRアセットのランタイムキャッシュ対応） */
-const CACHE = 'shiseki-v4';
+const CACHE = 'shiseki-v5';
 const CORE = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
 const OPTIONAL = ['./questions.json'];
 
@@ -24,6 +24,17 @@ self.addEventListener('fetch', e => {
   // ナビゲーション：ネット優先、失敗時はキャッシュのトップへ
   if (req.mode === 'navigate') {
     e.respondWith(fetch(req).catch(() => caches.match('./index.html')));
+    return;
+  }
+  // 問題データは常にネット優先（更新を確実に反映。オフライン時のみキャッシュ）
+  if (new URL(req.url).pathname.endsWith('questions.json')) {
+    e.respondWith(
+      fetch(req).then(res => {
+        const copy = res.clone();
+        caches.open(CACHE).then(c => c.put('./questions.json', copy)).catch(() => {});
+        return res;
+      }).catch(() => caches.match('./questions.json'))
+    );
     return;
   }
   // それ以外（自サイト資産＋OCRのCDN資産/wasm/学習データ）：キャッシュ優先＋取得時に保存
