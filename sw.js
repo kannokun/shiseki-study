@@ -1,9 +1,14 @@
 /* オフライン用 Service Worker（OCRアセットのランタイムキャッシュ対応） */
-const CACHE = 'shiseki-v3';
-const ASSETS = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
+const CACHE = 'shiseki-v4';
+const CORE = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
+const OPTIONAL = ['./questions.json'];
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
+  e.waitUntil(
+    caches.open(CACHE).then(c =>
+      c.addAll(CORE).then(() => Promise.all(OPTIONAL.map(u => c.add(u).catch(() => {}))))
+    ).then(() => self.skipWaiting())
+  );
 });
 
 self.addEventListener('activate', e => {

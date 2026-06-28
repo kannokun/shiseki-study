@@ -274,9 +274,13 @@ details.help{margin-top:8px} details.help summary{cursor:pointer; font-size:13px
   <!-- データ -->
   <section id="v-data" class="view">
     <div class="card">
+      <h2>問題データ（GitHub配信）</h2>
+      <p class="muted">このアプリは、初回起動時にGitHub上の問題データ（questions.json）を自動で読み込みます。問題を追加・更新したら、下のボタンで最新を取り込めます（履歴は保持・重複は除外）。</p>
+      <button class="btn" onclick="importFromSeed(false)">🔄 最新の問題を取り込む / 更新（マージ）</button>
+      <div class="divider"></div>
       <h2>データの書き出し / 読み込み</h2>
       <p class="muted">全データ（問題・履歴・画像）を1つのJSONにまとめます。iPhoneとPCで手動同期できます。読み込みは「マージ（合体）」方式なので、既存の履歴は消えません。</p>
-      <button class="btn" onclick="exportData()">📤 書き出し（エクスポート）</button>
+      <button class="btn sec" onclick="exportData()">📤 書き出し（エクスポート）</button>
       <label style="margin-top:14px">📥 読み込み（マージ）</label>
       <input type="file" id="importFile" accept="application/json,.json">
       <div class="muted" id="importMsg" style="margin-top:8px"></div>
@@ -661,33 +665,49 @@ async function exportData(){
   setTimeout(()=>URL.revokeObjectURL(url),1000);
   toast('書き出しました');
 }
+// 共通マージ：問題はid/本文一致で重複除外、履歴はid未登録のみ追加（既存は保持）
+async function mergeData(data){
+  if(!data||!Array.isArray(data.questions))throw new Error('形式が違います');
+  const hist=Array.isArray(data.history)?data.history:[];
+  const qById=new Map(QUESTIONS.map(q=>[q.id,q]));
+  const qSig=new Set(QUESTIONS.map(q=>q.questionText+'|'+(q.choices||[]).join('|')));
+  let addQ=0;
+  for(const q of data.questions){
+    if(qById.has(q.id))continue;
+    const sig=q.questionText+'|'+(q.choices||[]).join('|');
+    if(qSig.has(sig))continue;
+    if(!q.srs)q.srs=newSRS();
+    await put('questions',q);qById.set(q.id,q);qSig.add(sig);addQ++;
+  }
+  const hIds=new Set(HISTORY.map(h=>h.id));
+  let addH=0;
+  for(const h of hist){
+    if(h.id&&hIds.has(h.id))continue;
+    if(!h.id)h.id=uid();
+    await put('history',h);hIds.add(h.id);addH++;
+  }
+  await reload();
+  return {addQ,addH};
+}
+// GitHub（同じ場所）に置いた questions.json を取得してマージ
+async function importFromSeed(silent){
+  try{
+    const res=await fetch('./questions.json',{cache:'no-store'});
+    if(!res.ok)throw new Error('not found');
+    const {addQ,addH}=await mergeData(await res.json());
+    if(!silent){$('#importMsg').textContent=`✅ 配信中の問題データから 問題 ${addQ}件 / 履歴 ${addH}件 を追加しました（重複は除外）。`;toast('最新の問題を取り込みました');}
+    return addQ;
+  }catch(e){
+    if(!silent)$('#importMsg').textContent='❌ 問題データ（questions.json）を取得できませんでした。オンラインで再度お試しください。';
+    return 0;
+  }
+}
 $('#importFile').onchange=e=>{
   const f=e.target.files[0];if(!f)return;
   const fr=new FileReader();
   fr.onload=async()=>{
     try{
-      const data=JSON.parse(fr.result);
-      if(!data.questions||!data.history)throw new Error('形式が違います');
-      // 問題マージ：idが無ければ追加。あれば本文一致で重複扱い。
-      const qById=new Map(QUESTIONS.map(q=>[q.id,q]));
-      const qSig=new Set(QUESTIONS.map(q=>q.questionText+'|'+q.choices.join('|')));
-      let addQ=0;
-      for(const q of data.questions){
-        if(qById.has(q.id))continue;
-        const sig=q.questionText+'|'+q.choices.join('|');
-        if(qSig.has(sig))continue;
-        if(!q.srs)q.srs=newSRS();
-        await put('questions',q);qById.set(q.id,q);qSig.add(sig);addQ++;
-      }
-      // 履歴マージ：idが無いものだけ追加（既存は保持）
-      const hIds=new Set(HISTORY.map(h=>h.id));
-      let addH=0;
-      for(const h of data.history){
-        if(h.id&&hIds.has(h.id))continue;
-        if(!h.id)h.id=uid();
-        await put('history',h);hIds.add(h.id);addH++;
-      }
-      await reload();
+      const {addQ,addH}=await mergeData(JSON.parse(fr.result));
       $('#importMsg').textContent=`✅ 問題 ${addQ}件 / 履歴 ${addH}件 を追加しました（重複は除外）。`;
       toast('読み込み完了');
     }catch(err){$('#importMsg').textContent='❌ 読み込み失敗：'+err.message;}
@@ -1011,7 +1031,7 @@ async function init(){
   await openDB();
   await reload();
   resetForm();
-  if(QUESTIONS.length===0){await loadSamples();go('home');}
+  if(QUESTIONS.length===0){ if(!(await importFromSeed(true))) await loadSamples(); go('home'); }
   renderHome();
   if('serviceWorker'in navigator&&location.protocol.startsWith('http')){
     navigator.serviceWorker.register('sw.js').catch(()=>{});
